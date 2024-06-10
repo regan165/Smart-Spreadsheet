@@ -1,8 +1,19 @@
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.cell import Cell
-import csv
-import io
+
+class Table:
+    def __init__(self):
+        self.top = 0
+        self.left = 0
+        self.right = 0
+        self.bottom = 0
+        self.name = ''
+
+    def to_text(self, sheet):
+        lines = []
+        for i, row in enumerate(self.data):
+            lines.append('|'.join(str(e) for e in self.data[i]))
+        return "\r\n".join(lines)
 
 class ExcelTableExtractor:
     def __init__(self):
@@ -10,8 +21,7 @@ class ExcelTableExtractor:
 
     def open_file(self, path):
         workbook = load_workbook(filename=path, data_only=True)
-        sheet = workbook.active
-        return sheet
+        return workbook
 
     def has_border(self, cell):
         return cell.border.top.style or cell.border.bottom.style or cell.border.left.style or cell.border.right.style
@@ -49,17 +59,11 @@ class ExcelTableExtractor:
             dataframes.append(df)
         return dataframes
 
-    def get_csv_for_table_content(self, content):
-        sio = io.StringIO()
-        writer = csv.writer(sio)
-        writer.writerows(content)
-        return sio.getvalue()
-
     def clean_csv_content(self, csv_content):
         lines = csv_content.split('\n')
         cleaned_lines = []
         for line in lines:
             cleaned_line = line.strip(',')
-            if cleaned_line:  # Remove empty lines
+            if cleaned_line:
                 cleaned_lines.append(cleaned_line)
         return '\n'.join(cleaned_lines)

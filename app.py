@@ -1,22 +1,23 @@
-from flask import Flask, request, jsonify, render_template
 import os
+import logging
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from extractor import ExcelTableExtractor
-from openai import OpenAI
-import logging
-from flask_cors import CORS
-from dotenv import load_dotenv
+import pandas as pd
+from openai import OpenAI, AuthenticationError
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-load_dotenv()  # Load environment variables from .env file
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
-# Initialize the OpenAI client
-openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Store session data in a lightweight database or improve session management
+session_data = {}
 
-def chat(role, query, history):
-    # Ensure history is within limits
+def chat(api_key, role, query, history):
+    openai_client = OpenAI(api_key=api_key)
     if len(history) > 10:
         history = history[:1] + history[-9:]
     history.append({"role": "user", "content": query})
@@ -25,7 +26,7 @@ def chat(role, query, history):
         model="gpt-4-turbo",
         messages=history,
         temperature=0.2,
-        max_tokens=1000  # Adjust max tokens if needed
+        max_tokens=1000
     )
     result = completion.choices[0].message.content
     history.append({"role": "assistant", "content": result})
@@ -37,8 +38,9 @@ def home():
 
 @app.route('/parse', methods=['POST'])
 def parse():
-    if 'files' not in request.files:
-        return jsonify({"error": "No file part in the request"}), 400
+    api_key = request.form.get('api_key')
+    if not api_key:
+        return jsonify({"error": "No API key provided"}), 403
 
     files = request.files.getlist('files')
     if not files:
@@ -50,43 +52,61 @@ def parse():
     for file in files:
         if file.filename == '':
             continue
-        file_path = os.path.join('/tmp', secure_filename(file.filename))
-        file.save(file_path)
-        sheet = extractor.open_file(file_path)
-        tables = extractor.extract_tables(sheet)
-        dataframes = extractor.to_dataframes(tables)
-        csv_contents.extend([extractor.clean_csv_content(df.to_csv(index=False)) for df in dataframes])
+        try:
+            file_path = os.path.join('/tmp', secure_filename(file.filename))
+            file.save(file_path)
+            if file.filename.endswith('.csv'):
+                df = pd.read_csv(file_path)
+                csv_contents.append(extractor.clean_csv_content(df.to_csv(index=False)))
+            else:
+                workbook = extractor.open_file(file_path)
+                for sheetname in workbook.sheetnames:
+                    sheet = workbook[sheetname]
+                    tables = extractor.extract_tables(sheet)
+                    dataframes = extractor.to_dataframes(tables)
+                    csv_contents.extend([extractor.clean_csv_content(df.to_csv(index=False)) for df in dataframes])
+        except Exception as e:
+            logging.error(f"Error processing file {file.filename}: {e}")
+            return jsonify({"error": f"Error processing file {file.filename}"}), 500
 
-    # Limit the length of the summary prompt
-    summary_prompt = "As a financial analyst, provide a structured summary analysis of the following data in 1000 characters or less. Highlight key financial metrics and trends:\n"
-    for csv_content in csv_contents:
-        if len(summary_prompt) + len(csv_content) > 1500:  # Adjust limit as needed
-            break
-        summary_prompt += csv_content + "\n"
+    session_id = "session"
+    session_data[session_id] = {
+        'csv_contents': csv_contents,
+        'history': [{"role": "system", "content": "You are a financial analyst. Your task is to analyze the data provided and give clear, concise, and structured financial insights."}],
+        'api_key': api_key
+    }
 
-    # Initialize history with the summary prompt
-    history = [{"role": "system", "content": "You are a financial analyst. Your task is to analyze the data provided and give clear, concise, and structured financial insights."},
-               {"role": "user", "content": summary_prompt}]
-    
-    summary_response, history = chat("system", summary_prompt, history)
-
-    return jsonify({
-        "summary": summary_response,
-        "history": history
-    })
+    return jsonify({"csv_contents": csv_contents})
 
 @app.route('/ask', methods=['POST'])
 def ask():
     question = request.json.get('question')
-    history = request.json.get('history', [])
+    session_id = "session"
+
+    if not session_id or session_id not in session_data:
+        return jsonify({"error": "Session expired or not found. Please upload the files again."}), 400
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
 
-    prompt = f"As a financial analyst, answer the following question based on the provided data: {question}"
-    response, history = chat("user", prompt, history)
-    return jsonify({'answer': response, 'history': history})
+    csv_contents = session_data[session_id]['csv_contents']
+    history = session_data[session_id]['history']
+    api_key = session_data[session_id]['api_key']
+
+    csv_data = "\n".join(csv_contents)
+    prompt = f"Data: {csv_data}\n\nAs a financial analyst, answer the following question based on the provided data. Question: {question}"
+
+    try:
+        response, history = chat(api_key, "user", prompt, history)
+    except AuthenticationError:
+        return jsonify({"error": "Invalid API Keys"}), 401
+    except Exception as e:
+        logging.error(f"Error during chat completion: {e}")
+        return jsonify({"error": "An error occurred while processing your request."}), 500
+
+    session_data[session_id]['history'] = history
+
+    return jsonify({'answer': response, 'csv_contents': csv_contents})
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    app.run(debug=True, port=5000)  # Make sure the port matches your frontend requests
+    app.run(debug=True, port=5000)
