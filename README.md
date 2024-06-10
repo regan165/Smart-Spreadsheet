@@ -9,7 +9,7 @@ pip (Python package installer)
 Installation
 
 Clone the repository:
-git clone https://github.com/your-repo/smart-spreadsheet.git
+git clone https://github.com/regan165/Smart-Spreadsheet.git
 cd smart-spreadsheet
 
 Create and activate a virtual environment (optional but recommended):
