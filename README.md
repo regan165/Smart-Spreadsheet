@@ -13,7 +13,7 @@ Clone the repository:
 - cd smart-spreadsheet
 
 Create and activate a virtual environment (optional but recommended):
-- python3 -m venv new_env
+- python3 -m venv capix_env
 - source capix_env/bin/activate  # On Windows, use `capix_env\Scripts\activate`
 
 Install the required packages:
