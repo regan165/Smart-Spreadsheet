@@ -32,6 +32,16 @@
             flex-grow: 1;
             margin-right: 10px;
         }
+        .sample-questions {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        .sample-questions .card {
+            flex: 0 0 auto;
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
@@ -67,6 +77,35 @@
                 <button type="submit" class="btn btn-primary ml-2" id="ask-button">Ask</button>
             </div>
         </form>
+        
+        <div class="sample-questions" id="sample-questions" style="display: none;">
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">What is the total revenue for the last quarter?</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">What are the top three expenses for this year?</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">How has the net income changed over the past three years?</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">What is the current cash flow status?</p>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <p class="card-text">Can you provide a breakdown of the liabilities?</p>
+                </div>
+            </div>
+        </div>
+
         <div class="mt-3" id="ask-response"></div>
 
         <div class="mt-3" id="chat-history" style="display: none;">
@@ -108,6 +147,7 @@
                         csvContents = response.csv_contents;
                         $('#upload-response').html('<div class="alert alert-success">Files uploaded successfully.</div>');
                         $('#ask-form').show();
+                        $('#sample-questions').show();
                     },
                     error: function(error) {
                         $('#upload-button').prop('disabled', false).text('Upload');
@@ -118,6 +158,16 @@
 
             $('#ask-form').on('submit', function(event) {
                 event.preventDefault();
+                askQuestion();
+            });
+
+            $('#sample-questions .card').on('click', function() {
+                var question = $(this).find('.card-text').text();
+                $('#question').val(question);
+                askQuestion();
+            });
+
+            function askQuestion() {
                 var question = $('#question').val();
                 $('#ask-response').html('');  // Clear the error message
                 $('#ask-button').prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Ask');
@@ -145,7 +195,7 @@
                         }
                     }
                 });
-            });
+            }
 
             function appendToHistory(role, message) {
                 var cardClass = 'border-primary';
@@ -153,7 +203,7 @@
                     '<div class="card mt-3 ' + cardClass + ' scrollable-card">' +
                     '<div class="card-body">' +
                         '<h5 class="card-title text-primary">' + role + ':</h5>' +
-                        '<p class="card-text">' + sanitizeResponse(message) + '</p>' +
+                        '<p class="card-text">' + formatResponse(message) + '</p>' +
                     '</div>' +
                     '</div>'
                 );
@@ -164,16 +214,17 @@
                     '<div class="card mt-3 border-primary scrollable-card">' +
                     '<div class="card-body">' +
                     '<h5 class="card-title text-primary">' + userRole + ':</h5>' +
-                    '<p class="card-text">' + sanitizeResponse(question) + '</p>' +
+                    '<p class="card-text">' + formatResponse(question) + '</p>' +
                     '<h5 class="card-title text-primary">' + assistantRole + ':</h5>' +
-                    '<p class="card-text">' + sanitizeResponse(response) + '</p>' +
+                    '<p class="card-text">' + formatResponse(response) + '</p>' +
                     '</div>' +
                     '</div>'
                 );
             }
 
-            function sanitizeResponse(response) {
+            function formatResponse(response) {
                 return response
+                    .replace(/(?:\r\n|\r|\n)/g, '<br>')  // Convert newlines to <br> tags
                     .replace(/[*_~]/g, '')  // Remove markdown characters
                     .replace(/#/g, '');     // Remove hashtags
             }
